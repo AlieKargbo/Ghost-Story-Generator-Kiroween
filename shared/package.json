@@ -1,0 +1,10 @@
+{
+  "name": "ghost-story-shared",
+  "version": "1.0.0",
+  "description": "Shared types and interfaces for Ghost Story Generator",
+  "main": "types.ts",
+  "type": "module",
+  "keywords": ["ghost-story", "shared", "types"],
+  "author": "",
+  "license": "ISC"
+}

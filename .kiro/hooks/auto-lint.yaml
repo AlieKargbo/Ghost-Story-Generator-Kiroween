@@ -1,0 +1,5 @@
+name: Auto Lint on Save
+trigger: FileSaved
+file_pattern: "**/*.js"
+instructions: |
+  Run the project linter and formatter on the saved file and apply all safe fixes.
