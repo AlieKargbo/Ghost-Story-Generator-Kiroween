@@ -2,6 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background-color: var(--color-bg-primary);
 }
 
 /* Home Page Styles */
@@ -10,6 +11,29 @@
   margin: 0 auto;
   padding: var(--spacing-2xl) var(--spacing-lg);
   text-align: center;
+  min-height: 100vh;
+  background-image: url('/hallway.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  position: relative;
+}
+
+.home-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 10, 15, 0.85);
+  z-index: 0;
+}
+
+.home-container > * {
+  position: relative;
+  z-index: 1;
 }
 
 .home-container h1 {
@@ -43,6 +67,29 @@
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  background-image: url('/Gemini_Generated_Image_a6iw8oa6iw8oa6iw.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  position: relative;
+}
+
+.session-view::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 10, 15, 0.90);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.session-view > * {
+  position: relative;
+  z-index: 1;
 }
 
 .session-header {
@@ -1101,4 +1148,73 @@
     width: 48px;
     height: 48px;
   }
+}
+
+/* Frankenstein "Stitched Together" Aesthetic */
+
+/* Add stitches to segment borders */
+.story-segment {
+  position: relative;
+  border-style: dashed !important;
+  border-width: 2px;
+}
+
+.story-segment::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 30px;
+  width: 60px;
+  height: 20px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 3px,
+    var(--color-text-muted) 3px,
+    var(--color-text-muted) 6px
+  );
+  opacity: 0.3;
+}
+
+/* AI segments look "grafted on" */
+.ai-segment {
+  animation: glitchIn 0.5s ease;
+  box-shadow: 0 0 20px rgba(107, 70, 193, 0.5);
+}
+
+@keyframes glitchIn {
+  0%, 100% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(2px, -2px); }
+  60% { transform: translate(-2px, -2px); }
+  80% { transform: translate(2px, 2px); }
+}
+
+/* Make the whole app look assembled from parts */
+.session-header {
+  border-bottom: 3px dashed var(--color-bg-tertiary);
+}
+
+.sidebar {
+  border-left: 3px dashed var(--color-bg-tertiary);
+}
+
+/* Add bolts/rivets to corners */
+.session-view::before,
+.session-view::after {
+  content: '⚙️';
+  position: fixed;
+  font-size: 24px;
+  opacity: 0.3;
+  z-index: 1000;
+}
+
+.session-view::before {
+  top: 20px;
+  left: 20px;
+}
+
+.session-view::after {
+  top: 20px;
+  right: 20px;
 }

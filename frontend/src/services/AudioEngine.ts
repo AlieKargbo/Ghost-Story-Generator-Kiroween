@@ -48,7 +48,7 @@ export class AudioEngine {
 
       // Start Tone.js (this creates the AudioContext)
       await Tone.start();
-      
+
       this.audioContext = Tone.getContext().rawContext as AudioContext;
 
       // Create master gain node
@@ -202,6 +202,31 @@ export class AudioEngine {
     this.setCurrentMood(tags);
 
     return tags;
+  }
+
+  // AudioEngine.ts - Add this method
+  playAITakeoverSound(): void {
+    if (!this.initialized || !this.effectsGain) return;
+
+    // Creepy glitch sound when AI takes over
+    const synth = new Tone.Synth({
+      oscillator: { type: 'sawtooth' },
+      envelope: { attack: 0.005, decay: 0.1, sustain: 0.2, release: 0.3 }
+    });
+
+    const gain = new Tone.Gain(0.6);
+    synth.connect(gain);
+    gain.connect(this.effectsGain);
+
+    // Play a descending glitch pattern
+    const notes = ['C5', 'B4', 'Bb4', 'A4'];
+    notes.forEach((note, i) => {
+      setTimeout(() => {
+        synth.triggerAttackRelease(note, '0.05');
+      }, i * 50);
+    });
+
+    setTimeout(() => synth.dispose(), 500);
   }
 
   /**
@@ -685,7 +710,7 @@ export class AudioEngine {
    */
   mute(): void {
     this.settings.muted = true;
-    
+
     if (this.initialized && this.masterGain) {
       this.masterGain.gain.value = 0;
     }
@@ -698,7 +723,7 @@ export class AudioEngine {
    */
   unmute(): void {
     this.settings.muted = false;
-    
+
     if (this.initialized && this.masterGain) {
       this.masterGain.gain.value = this.settings.masterVolume;
     }

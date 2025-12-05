@@ -16,6 +16,7 @@ export function useWebSocket() {
   const addParticipant = useSessionStore((state) => state.addParticipant);
   const setConnected = useSessionStore((state) => state.setConnected);
   const setOffline = useSessionStore((state) => state.setOffline);
+  const currentSession = useSessionStore((state) => state.currentSession);
 
   // Initialize WebSocket client
   useEffect(() => {
@@ -31,13 +32,6 @@ export function useWebSocket() {
     }
 
     const client = clientRef.current;
-
-    // Restore session context if available (for page refresh)
-    const currentSession = useSessionStore.getState().currentSession;
-    if (currentSession && currentSession.participants.length > 0) {
-      const currentParticipant = currentSession.participants[currentSession.participants.length - 1];
-      client.setSessionContext(currentSession.id, currentParticipant.id);
-    }
 
     // Set up event handlers
     const handleSessionCreated = (session: StorySession) => {
@@ -57,7 +51,12 @@ export function useWebSocket() {
     };
 
     const handleSegmentAdded = (segment: StorySegment) => {
-      console.log('Segment added:', segment);
+      console.log('📥 Segment received:', {
+        id: segment.id,
+        contributorType: segment.contributorType,
+        content: segment.content.substring(0, 50),
+        isAI: segment.contributorType === 'ai'
+      });
       addSegment(segment);
     };
 
@@ -68,8 +67,12 @@ export function useWebSocket() {
 
     const handleError = (error: { message: string; code: string }) => {
       console.error('WebSocket error:', error);
-      // You could show a toast notification here
-      alert(`Error: ${error.message}`);
+
+      // Handle session not found - clear invalid session
+      if (error.code === 'SESSION_NOT_FOUND') {
+        console.warn('Session not found on server, clearing local session');
+        useSessionStore.getState().clearSession();
+      }
     };
 
     const handleSessionReconnected = (data: { sessionId: string }) => {

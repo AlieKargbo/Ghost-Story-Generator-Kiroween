@@ -51,6 +51,24 @@ ghost-story-generator/
     └── types.ts
 ```
 
+## Current Architecture
+
+**Storage:** In-memory (sessions reset on server restart)
+**Production TODO:** Integrate DatabaseRepository for persistence
+
+```
+┌─────────────┐      WebSocket      ┌─────────────┐
+│   Frontend  │◄───────────────────►│   Backend   │
+│   (React)   │                     │  (Express)  │
+└─────────────┘                     └─────────────┘
+       │                                    │
+       ▼                                    ▼
+┌─────────────┐                     ┌─────────────┐
+│ Audio Engine│                     │ AI Co-Author│
+│  (Tone.js)  │                     │  (OpenAI)   │
+└─────────────┘                     └─────────────┘
+```
+
 ## Technology Stack
 
 ### Backend
@@ -147,3 +165,7 @@ npm run build
 ## License
 
 ISC
+
+## 👏 Acknowledgments
+
+Built for the Kiroween 2025 Hackathon

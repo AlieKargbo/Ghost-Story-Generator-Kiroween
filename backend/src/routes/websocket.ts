@@ -4,8 +4,22 @@ import { randomUUID } from 'crypto';
 import { validateSegment } from '../utils/validation.js';
 import { generateInviteLink, validateInviteToken } from '../utils/inviteLinks.js';
 import type { Participant, StorySegment } from '../../../shared/types.js';
+import { AICoAuthor } from '../services/AICoAuthor.js';
+
+// Helper function to debug room membership
+function debugRoom(io: Server, roomName: string) {
+  const room = io.sockets.adapter.rooms.get(roomName);
+  console.log(`🔍 Room ${roomName} has ${room?.size || 0} sockets:`, Array.from(room || []));
+}
 
 export function setupWebSocketHandlers(io: Server, storyManager: StoryManager) {
+  // Initialize AI Co-Author with Google Gemini
+  console.log('🔑 Initializing AI Co-Author with API key:', process.env.GEMINI_API_KEY ? 'PRESENT' : 'MISSING');
+  const aiCoAuthor = new AICoAuthor(
+    3, // Trigger every 3 user segments
+    20, // Max context segments
+    process.env.GEMINI_API_KEY
+  );
   io.on('connection', (socket: Socket) => {
     console.log(`Client connected: ${socket.id}`);
 
@@ -65,6 +79,7 @@ export function setupWebSocketHandlers(io: Server, storyManager: StoryManager) {
 
         // Join the socket room for this session
         socket.join(session.id);
+        console.log(`✅ Socket ${socket.id} joined room: ${session.id}`); // Debug
 
         // Store session ID in socket data for later use
         socket.data.sessionId = session.id;
@@ -129,10 +144,13 @@ export function setupWebSocketHandlers(io: Server, storyManager: StoryManager) {
       }
     });
 
+
     // Segment add event handler
-    socket.on('segment:add', (data: { sessionId: string; content: string }) => {
+    socket.on('segment:add', async (data: { sessionId: string; content: string }) => {
       try {
         const { sessionId, content } = data;
+
+        console.log(`📝 Segment add request from ${socket.id} for session ${sessionId}`); // Debug
 
         // Validate content
         const validationResult = validateSegment(content);
@@ -164,14 +182,69 @@ export function setupWebSocketHandlers(io: Server, storyManager: StoryManager) {
           moodTags: [],
         };
 
+        console.log(`✅ Created segment:`, segment.id, segment.content.substring(0, 50)); // Debug
+
         // Add segment to session
         storyManager.addSegment(sessionId, segment);
 
-        // Broadcast the new segment to all participants in the session
+        console.log(`📢 Broadcasting to room: ${sessionId}`); // Debug
+
+        // ⭐ IMPORTANT: Broadcast to ALL clients in the room (including sender)
         io.to(sessionId).emit('segment:added', segment);
 
-        // Send acknowledgment to the sender
+        // Also emit directly to sender as backup
+        socket.emit('segment:added', segment);
+
+        // Send acknowledgment
         socket.emit('segment:acknowledged', { segmentId: segment.id });
+
+        console.log(`✅ Segment ${segment.id} broadcasted successfully`); // Debug
+
+        // ⭐ AI CO-AUTHOR LOGIC ⭐
+        const updatedSession = storyManager.getSession(sessionId);
+        if (updatedSession) {
+          const userSegments = updatedSession.segments.filter(s => s.contributorType === 'user');
+
+          if (userSegments.length > 0 && userSegments.length % 3 === 0) {
+            console.log(`🤖 AI trigger threshold reached (${userSegments.length} user segments)`);
+
+            try {
+              const context = aiCoAuthor.buildNarrativeContext(updatedSession.segments);
+              console.log(`🤖 Generating AI horror element...`);
+              
+              const horrorElement = await aiCoAuthor.generateHorrorElement(context);
+
+              const aiSegment: StorySegment = {
+                id: randomUUID(),
+                content: horrorElement.content,
+                contributorId: 'ai-coauthor',
+                contributorType: 'ai',
+                timestamp: new Date(),
+                moodTags: horrorElement.tags,
+              };
+
+              storyManager.addSegment(sessionId, aiSegment);
+              
+              console.log(`🤖 AI segment created:`, {
+                id: aiSegment.id,
+                content: aiSegment.content,
+                contributorType: aiSegment.contributorType,
+                tags: aiSegment.tags
+              });
+              
+              io.to(sessionId).emit('segment:added', aiSegment);
+              console.log(`🤖 AI segment broadcasted to room ${sessionId}`);
+            } catch (aiError) {
+              console.error('❌ Failed to generate AI horror element:', aiError);
+              // Emit error to clients so they know AI generation failed
+              io.to(sessionId).emit('error', {
+                message: 'AI co-author failed to generate content',
+                code: 'AI_GENERATION_ERROR',
+                details: aiError instanceof Error ? aiError.message : 'Unknown error'
+              });
+            }
+          }
+        }
 
         console.log(`Segment added to session ${sessionId}`);
       } catch (error) {

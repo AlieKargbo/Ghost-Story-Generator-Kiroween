@@ -11,6 +11,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/session/:sessionId" element={<SessionView />} />
+           {/* This route allows joining via invite link */}
+          <Route path="/join/:sessionId" element={<SessionView />} />
         </Routes>
       </Router>
     </ErrorBoundary>

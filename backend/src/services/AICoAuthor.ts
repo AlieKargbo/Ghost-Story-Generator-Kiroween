@@ -1,22 +1,30 @@
 import { NarrativeContext, HorrorElement, StorySegment } from '../../../shared/types.js';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { randomUUID } from 'crypto';
 
 export class AICoAuthor {
   private readonly segmentThreshold: number;
   private readonly maxContextSegments: number;
-  private readonly openai: OpenAI | null;
+  private readonly genAI: GoogleGenerativeAI | null;
+  private readonly model: any;
   private readonly maxRetries: number = 3;
   private readonly baseDelay: number = 1000; // 1 second
 
   constructor(segmentThreshold: number = 5, maxContextSegments: number = 20, apiKey?: string) {
     this.segmentThreshold = segmentThreshold;
     this.maxContextSegments = maxContextSegments;
-    
-    // Initialize OpenAI client if API key is provided
+
+    // Initialize Google Gemini client if API key is provided
     if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
+      this.genAI = new GoogleGenerativeAI(apiKey);
+      // Try gemini-1.5-flash-latest which should be available
+      this.model = this.genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+      });
+      console.log('✅ Gemini model initialized: gemini-2.5-flash-latest');
     } else {
-      this.openai = null;
+      this.genAI = null;
+      this.model = null;
     }
   }
 
@@ -81,25 +89,25 @@ export class AICoAuthor {
   summarizeContext(segments: StorySegment[]): string {
     // Take only the most recent segments to avoid token limits
     const recentSegments = segments.slice(-this.maxContextSegments);
-    
+
     // Combine all segment content
     const fullText = recentSegments.map(s => s.content).join(' ');
-    
+
     // Extract entities from the full text
     const entities = this.extractEntities(fullText);
-    
+
     // Build summary
     let summary = 'Story so far:\n';
     summary += recentSegments.map((s, i) => `${i + 1}. ${s.content}`).join('\n');
-    
+
     if (entities.characters.length > 0) {
       summary += `\n\nCharacters mentioned: ${entities.characters.join(', ')}`;
     }
-    
+
     if (entities.locations.length > 0) {
       summary += `\n\nLocations mentioned: ${entities.locations.join(', ')}`;
     }
-    
+
     return summary;
   }
 
@@ -109,7 +117,7 @@ export class AICoAuthor {
   buildNarrativeContext(segments: StorySegment[]): NarrativeContext {
     const fullText = segments.map(s => s.content).join(' ');
     const entities = this.extractEntities(fullText);
-    
+
     return {
       segments,
       characters: entities.characters,
@@ -124,7 +132,7 @@ export class AICoAuthor {
    */
   private detectTimePeriod(text: string): string | undefined {
     const lowerText = text.toLowerCase();
-    
+
     if (lowerText.match(/\b(victorian|1800s|nineteenth century)\b/)) {
       return 'victorian';
     }
@@ -134,67 +142,97 @@ export class AICoAuthor {
     if (lowerText.match(/\b(modern|today|smartphone|internet|computer)\b/)) {
       return 'modern';
     }
-    
+
     return undefined;
   }
 
   /**
-   * Generate a horror element using LLM with context awareness
+   * Generate a horror element using Google Gemini with context awareness
    */
   async generateHorrorElement(context: NarrativeContext): Promise<HorrorElement> {
-    if (!this.openai) {
-      throw new Error('OpenAI client not initialized. Please provide an API key.');
+    if (!this.model) {
+      throw new Error('Google Gemini client not initialized. Please provide an API key.');
     }
 
     const prompt = this.buildPrompt(context);
-    
+
     // Retry logic with exponential backoff
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const response = await this.openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a creative horror writer who adds unexpected twists to ghost stories. Generate a single paragraph (2-4 sentences) that introduces a horror element. Be creepy and atmospheric but avoid graphic violence or explicit content. Reference characters and locations from the story context when possible.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.9,
-          max_tokens: 150
+        const systemInstruction = 'You are a creative horror writer. Add a creepy twist to this ghost story. Write 2-3 sentences that introduce an unexpected horror element. Be atmospheric and eerie.';
+
+        const fullPrompt = `${systemInstruction}\n\n${prompt}`;
+
+        console.log('🔍 Sending prompt to Gemini (length:', fullPrompt.length, 'chars)');
+
+        const result = await this.model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+          generationConfig: {
+            temperature: 0.9,
+            // 🚨 FIX 1: Increase the token limit to ensure there's enough room for output
+            maxOutputTokens: 2048,
+            topP: 0.95,
+            topK: 40,
+
+          },
+
         });
 
-        const content = response.choices[0]?.message?.content?.trim() || '';
-        
+        const response = result.response;
+
+        // Check if content was blocked by safety filters
+        if (response.promptFeedback?.blockReason) {
+          console.warn('⚠️ Content blocked by Gemini:', response.promptFeedback.blockReason);
+          throw new Error(`Content blocked: ${response.promptFeedback.blockReason}`);
+        }
+
+        // Check for candidate blocks
+        const candidate = response.candidates?.[0];
+        if (candidate?.finishReason === 'SAFETY') {
+          console.warn('⚠️ Content blocked by safety filters');
+          throw new Error('Content blocked by safety filters');
+        }
+
+        const content = response.text()?.trim() || '';
+        console.log('🔍 Generated content:', content.substring(0, 100));
+
+        if (!content) {
+          console.error('❌ Empty content from Gemini. Response:', JSON.stringify(response, null, 2));
+          throw new Error('Gemini returned empty content');
+        }
+
         // Filter the generated content
         const filteredContent = this.filterContent(content);
-        
+        console.log('✅ Final content length:', filteredContent.length, 'chars');
+
         // Calculate intensity based on keywords
         const intensity = this.calculateIntensity(filteredContent);
-        
+
         // Extract tags
         const tags = this.extractHorrorTags(filteredContent);
-        
+
         return {
           content: filteredContent,
           intensity,
           tags
         };
       } catch (error) {
+        // 🚨 FIX: Log the full error immediately for debugging
+        console.error(`❌ Attempt ${attempt + 1} failed with error:`, error);
         lastError = error as Error;
-        
+
         // If it's a rate limit error, wait with exponential backoff
+        // NOTE: The current SDK does not always throw a specific error type,
+        // so logging the message is key to determining the actual issue.
         if (attempt < this.maxRetries - 1) {
           const delay = this.baseDelay * Math.pow(2, attempt);
+          console.log(`⏱️ Waiting ${delay}ms before retry...`);
           await this.sleep(delay);
         }
       }
     }
-    
+
     throw new Error(`Failed to generate horror element after ${this.maxRetries} attempts: ${lastError?.message}`);
   }
 
@@ -203,26 +241,28 @@ export class AICoAuthor {
    */
   private buildPrompt(context: NarrativeContext): string {
     let prompt = 'Continue this ghost story with an unexpected horror element:\n\n';
-    
+
     // Add recent segments
-    const recentSegments = context.segments.slice(-5);
+    const recentSegments = context.segments.slice(-this.maxContextSegments);
     prompt += recentSegments.map(s => s.content).join(' ');
-    
+
     // Add context hints
     if (context.characters.length > 0) {
       prompt += `\n\nCharacters in the story: ${context.characters.join(', ')}`;
     }
-    
+
     if (context.locations.length > 0) {
       prompt += `\nLocations mentioned: ${context.locations.join(', ')}`;
     }
-    
+
     if (context.timeperiod) {
       prompt += `\nTime period: ${context.timeperiod}`;
     }
-    
+
     prompt += '\n\nAdd a creepy twist or horror element that fits the story:';
-    
+
+    console.log('📝 Built prompt for AI:', prompt);
+
     return prompt;
   }
 
@@ -235,14 +275,14 @@ export class AICoAuthor {
       'gore', 'guts', 'dismember', 'decapitat', 'mutilat', 'torture',
       'eviscerat', 'disembowel', 'blood splatter', 'severed limb'
     ];
-    
+
     // List of explicit content keywords
     const explicitKeywords = [
       'sexual', 'nude', 'naked', 'rape', 'molest'
     ];
-    
+
     const lowerText = text.toLowerCase();
-    
+
     // Check for inappropriate content
     for (const keyword of [...graphicKeywords, ...explicitKeywords]) {
       if (lowerText.includes(keyword)) {
@@ -250,7 +290,7 @@ export class AICoAuthor {
         return 'A cold presence filled the room, and the shadows seemed to move on their own.';
       }
     }
-    
+
     return text;
   }
 
@@ -263,22 +303,22 @@ export class AICoAuthor {
       medium: ['fear', 'dark', 'shadow', 'cold', 'whisper', 'strange', 'eerie'],
       low: ['odd', 'unusual', 'quiet', 'silence', 'distant']
     };
-    
+
     const lowerText = text.toLowerCase();
     let score = 0;
-    
+
     for (const keyword of intensityKeywords.high) {
       if (lowerText.includes(keyword)) score += 3;
     }
-    
+
     for (const keyword of intensityKeywords.medium) {
       if (lowerText.includes(keyword)) score += 2;
     }
-    
+
     for (const keyword of intensityKeywords.low) {
       if (lowerText.includes(keyword)) score += 1;
     }
-    
+
     // Normalize to 0-10 scale
     return Math.min(10, Math.max(1, score));
   }
@@ -289,14 +329,14 @@ export class AICoAuthor {
   private extractHorrorTags(text: string): string[] {
     const tags: string[] = [];
     const lowerText = text.toLowerCase();
-    
+
     const tagKeywords = {
       'supernatural': ['ghost', 'spirit', 'phantom', 'apparition', 'haunting'],
       'psychological': ['fear', 'terror', 'madness', 'insanity', 'paranoia'],
       'gothic': ['darkness', 'shadow', 'ancient', 'decay', 'ruins'],
       'suspense': ['whisper', 'footsteps', 'watching', 'following', 'lurking']
     };
-    
+
     for (const [tag, keywords] of Object.entries(tagKeywords)) {
       for (const keyword of keywords) {
         if (lowerText.includes(keyword)) {
@@ -305,7 +345,7 @@ export class AICoAuthor {
         }
       }
     }
-    
+
     return tags;
   }
 
@@ -334,6 +374,6 @@ export class AICoAuthor {
    * Generate a unique segment ID
    */
   private generateSegmentId(): string {
-    return `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return randomUUID();
   }
 }

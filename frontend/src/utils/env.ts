@@ -4,11 +4,11 @@
  */
 
 export function getWebSocketUrl(): string {
-  // In test environment, use process.env
-  if (typeof process !== 'undefined' && process.env?.VITE_WS_URL) {
-    return process.env.VITE_WS_URL;
+  // Vite exposes env vars on import.meta.env (NOT process.env)
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL;
   }
   
-  // Default fallback
+  // Default fallback for development
   return 'http://localhost:3000';
 }
