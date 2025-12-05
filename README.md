@@ -2,6 +2,30 @@
 
 An interactive web application that enables collaborative storytelling with an AI co-author and dynamic atmospheric audio generation.
 
+### AI Horror Generation
+The AI analyzes your story context and generates contextually-relevant horror elements:
+```typescript
+const horrorElement = await aiCoAuthor.generateHorrorElement(context);
+// "The door they had just entered through was now bricked up..."
+```
+### Dynamic Audio
+Audio responds to story keywords and mood:
+```typescript
+audioEngine.analyzeMood(text);  // Detects: horror, tense, calm
+audioEngine.detectSoundEffects(text);  // Triggers: scream, thunder, etc.
+audioEngine.updateSoundscape(moodTags);  // Adjusts ambient layers
+```
+
+### Offline Resilience
+```typescript
+// Queue segments when offline
+if (!socket.connected) {
+  offlineQueue.enqueue(sessionId, content);
+}
+// Auto-sync when reconnected
+onReconnect(() => offlineQueue.syncAll());
+```
+
 ## Project Structure
 
 ```
